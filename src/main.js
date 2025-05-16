@@ -1,254 +1,86 @@
-import slides from './slides';
 import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
+import ScrollTrigger from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
 
-document.addEventListener("DOMContentLoaded", () => {
-  const lenis = new Lenis();
-  lenis.on("scroll", ScrollTrigger.update);
-  gsap.ticker.add((time) => {
-    lenis.raf(time * 1000)
-  });
-  gsap.ticker.lagSmoothing(0);
+const lenis = new Lenis({
+  duration: 1.2,
+  lerp: 0.1,
+});
 
-  const slideImages = document.querySelector(".slide-images");
-  const titleElement = document.getElementById("title-text");
-  const exploreLink = document.querySelector(".slide-link a");
+lenis.on('scroll', ScrollTrigger.update);
 
-  const totalSlides = slides.length;
-  const stripsCount = 25;
-  let currentTitleIndex = 0;
-  let queuedTitleIndex = null;
-  const titleChangeTreshold = 0.5;
-  let isAnimating = false;
+function raf(time) {
+  lenis.raf(time);
+  requestAnimationFrame(raf);
+}
+requestAnimationFrame(raf);
 
-  const firstSlideImg = document.querySelector("#img-1 img");
-  firstSlideImg.style.transform = "scale(1.25)";
+const images = [
+  document.querySelector('#img-2'),
+  document.querySelector('#img-3'),
+  document.querySelector('#img-4')
+];
+const stripCount = 30;
+const sectionCount = images.length;
 
-  for (let i = 1; i < totalSlides; i++) {
-    const imgContainer = document.createElement("div");
-    imgContainer.className = "img-container";
-    imgContainer.id = `img-container-${i + 1}`;
-    imgContainer.style.opacity = "0";
+function getMaskGradient(progress, stripCount = 30) {
+  const stops = [];
+  const step = 100 / stripCount;
+  const stripDelay = 0.7 / stripCount; // untuk efek berantai
 
-    for (let j = 0; j < stripsCount; j++) {
-      const strip = document.createElement("div");
-      strip.className = "strip";
+  for (let i = 0; i < stripCount; i++) {
+    // Setiap strip punya delay
+    const stripStart = i * stripDelay;
+    let localProgress = (progress - stripStart) / (1 - 0.7);
+    localProgress = Math.max(0, Math.min(1, localProgress));
 
-      const img = document.createElement("img");
-      img.src = slides[i].image;
-      img.alt = slides[i].title;
-      img.style.transform = "scale(1.25)";
+    // Hitung posisi vertikal strip (dari bawah ke atas)
+    const base = i * step;
+    const top = base + step * localProgress;
 
-      const stripPositionFromBottom = stripsCount - j - 1;
-      const stripLowerBound = (stripPositionFromBottom + 1) * (100 / stripsCount);
-      const stripUpperBound = stripPositionFromBottom * (100 / stripsCount);
-
-      strip.style.clipPath = `polygon(0% ${stripLowerBound}%, 100% ${stripLowerBound}%, 100% ${stripUpperBound - 0.1}%, 0% ${stripUpperBound - 0.1}%)`;
-
-      strip.appendChild(img);
-      imgContainer.appendChild(strip);
-    }
-
-    slideImages.appendChild(imgContainer);
+    // Bagian hitam dari base sampai top, sisanya transparan
+    stops.push(
+      `black ${base}% ${top}%`,
+      `transparent ${top}% ${base + step}%`
+    );
   }
+  return `linear-gradient(0deg, ${stops.join(', ')})`;
+}
 
-  const transitionCount = totalSlides - 1;
-  const scrollDistancePerTransition = 1000;
-  const initialScrollDelay = 300;
-  const finalScrollDelay = 300;
+// Inisialisasi semua gambar ke strip tertutup
+images.forEach(img => {
+  img.style.setProperty('--mask-gradient', getMaskGradient(0, stripCount));
+});
 
-  const totalScrollDistance = transitionCount * scrollDistancePerTransition + initialScrollDelay + finalScrollDelay;
+gsap.to({}, {
+  scrollTrigger: {
+    trigger: '.sticky-slider',
+    start: 'top top',
+    end: () => `+=${window.innerHeight * 2 * sectionCount}`,
+    scrub: true,
+    onUpdate: self => {
+      const totalProgress = self.progress;
+      const sectionProgress = 1 / sectionCount;
 
-  const transitionRanges = [];
-  let currentScrollPosition = initialScrollDelay;
+      images.forEach((img, i) => {
+        const start = i * sectionProgress;
+        const end = (i + 1) * sectionProgress;
+        let progress = (totalProgress - start) / sectionProgress;
+        progress = Math.max(0, Math.min(1, progress));
 
-  for (let i = 0; i < transitionCount; i++) {
-    const transitionStart = currentScrollPosition;
-    const transitionEnd = transitionStart + scrollDistancePerTransition;
-
-    transitionRanges.push({
-      transition: i,
-      startVh: transitionStart,
-      endVh: transitionEnd,
-      startPercent: transitionStart / totalScrollDistance,
-      endPercent: transitionEnd / totalScrollDistance,
-    });
-
-    currentScrollPosition = transitionEnd;
-  }
-
-  function calculateImageProgress(scrollProgress) {
-    let imageProgress = 0;
-
-    if (scrollProgress < transitionRanges[0].startPercent) {
-      return 0;
-    }
-
-    if (scrollProgress > transitionRanges[transitionRanges.length - 1].endPercent) {
-      return transitionRanges.length;
-    }
-
-    for (let i = 0; i < transitionRanges.length; i++) {
-      const range = transitionRanges[i];
-
-      if (scrollProgress >= range.startPercent && scrollProgress <= range.endPercent) {
-        const rangeSize = range.endPercent - range.startPercent;
-        const normalizedProgress = (scrollProgress - range.startPercent) / rangeSize;
-        imageProgress = i + normalizedProgress;
-        break;
-      } else if (scrollProgress > range.endPercent) {
-        imageProgress = i + 1;
-      }
-    }
-
-    return imageProgress;
-  }
-
-  function getScaleForImage(imageIndex, currentImageIndex, progress) {
-    if (imageIndex > currentImageIndex) return 1.25;
-    if (imageIndex < currentImageIndex - 1) return 1;
-
-    let totalProgress = imageIndex === currentImageIndex ? progress : 1 + progress;
-
-    return 1.25 - (0.25 * totalProgress) / 2;
-  }
-
-  function animateTitleChange(index, direction) {
-    if (index === currentTitleIndex) return;
-    if (index < 0 || index >= slides.length) return;
-
-    if (isAnimating) {
-      queuedTitleIndex = index;
-      return;
-    }
-
-    isAnimating = true;
-    const newTitle = slides[index].title;
-    const newUrl = slides[index].url;
-    const outY = direction === "down" ? "-120%" : "120%";
-    const inY = direction === "down" ? "120%" : "-120%";
-
-    gsap.killTweensOf(titleElement);
-
-    exploreLink.href = newUrl;
-
-    gsap.to(titleElement, {
-      y: outY,
-      duration: 0.5,
-      ease: "power3.out",
-      onComplete: () => {
-        titleElement.textContent = newTitle;
-        gsap.set(titleElement, { y: inY });
-
-        gsap.to(titleElement, {
-          y: "0%",
-          duration: 0.5,
-          ease: "power3.out",
-          onComplete: () => {
-            currentTitleIndex = index;
-            isAnimating = false;
-
-            if (queuedTitleIndex !== null && queuedTitleIndex !== currentTitleIndex) {
-              const nextIndex = queuedTitleIndex;
-              queuedTitleIndex = null;
-              animateTitleChange(nextIndex, direction);
-            }
-          },
-        });
-      },
-    });
-  }
-
-  function getTitleIndexForProgress(imageProgress) {
-    const imageIndex = Math.floor(imageProgress);
-    const imageSpecificProgress = imageProgress - imageIndex;
-
-    if (imageSpecificProgress >= titleChangeTreshold) {
-      return Math.min(imageIndex + 1, slides.length - 1);
-    } else {
-      return imageIndex;
+        img.style.setProperty('--mask-gradient', getMaskGradient(progress, stripCount));
+      });
     }
   }
+});
 
-  let lastImageProgress = 0;
-
-  ScrollTrigger.create({
-    trigger: ".sticky-slider",
-    start: "top top",
-    end: `+=${totalScrollDistance}vh`,
-    pin: true,
-    pinSpacing: true,
-    scrub: 1,
-    invalidateOnRefresh: true,
-    onUpdate: (self) => {
-      const imageProgress = calculateImageProgress(self.progress);
-
-      if (typeof imageProgress === "number") {
-        const scrollDirection = imageProgress > lastImageProgress ? "down" : "up";
-        const currentImageIndex = Math.floor(imageProgress);
-        const imageSpecificProgress = imageProgress - currentImageIndex;
-
-        const correctTitleIndex = getTitleIndexForProgress(imageProgress);
-
-        if (correctTitleIndex !== currentImageIndex) {
-          queuedTitleIndex = correctTitleIndex; 
-          if (!isAnimating) {
-            animateTitleChange(correctTitleIndex, scrollDirection);
-          }
-        }
-
-        const firstSlideImgScale = getScaleForImage(0, currentImageIndex, imageSpecificProgress);
-        firstSlideImg.style.transform = `scale(${firstSlideImgScale})`;
-
-        for (let i = 1; i < totalSlides; i++) {
-          const imgContainer = document.getElementById(`img-container-${i + 1}`);
-          if (!imgContainer) continue;
-          
-          imgContainer.style.opacity = "1";
-          
-          const strips = imgContainer.querySelectorAll(".strip");
-          const images = imgContainer.querySelectorAll("img");
-          
-          const transitionIndex = i - 1;
-          
-          if (transitionIndex < currentImageIndex) {
-            strips.forEach((strip, stripIndex) => {
-              const stripPositionFromBottom = stripsCount - stripIndex - 1;
-              const stripUpperBound = stripPositionFromBottom * (100 / stripsCount);
-              const stripLowerBound = (stripPositionFromBottom + 1) * (100 / stripsCount);
-              strip.style.clipPath = `polygon(0% ${stripLowerBound}%, 100% ${stripLowerBound}%, 100% ${stripUpperBound - 0.1}%, 0% ${stripUpperBound - 0.1}%)`;
-            });
-          } else if (transitionIndex === currentImageIndex) {
-            strips.forEach((strip, stripIndex) => {
-              const stripPositionFromBottom = stripsCount - stripIndex - 1;
-              const stripUpperBound = stripPositionFromBottom * (100 / stripsCount);
-              const stripLowerBound = (stripPositionFromBottom + 1) * (100 / stripsCount);
-              
-              const stripDelayFactor = stripIndex / stripsCount;
-              const adjustedProgress = Math.max(0, Math.min(1, (imageSpecificProgress - stripDelayFactor * 0.5) / (1 - stripDelayFactor * 0.5)));
-              
-              const currentStripUpperBound = stripLowerBound - (stripLowerBound - (stripUpperBound - 0.1)) * adjustedProgress;
-              strip.style.clipPath = `polygon(0% ${stripLowerBound}%, 100% ${stripLowerBound}%, 100% ${currentStripUpperBound}%, 0% ${currentStripUpperBound}%)`;
-            });
-          } else {
-            strips.forEach((strip, stripIndex) => {
-              const stripPositionFromBottom = stripsCount - stripIndex - 1;
-              const stripLowerBound = (stripPositionFromBottom + 1) * (100 / stripsCount);
-              strip.style.clipPath = `polygon(0% ${stripLowerBound}%, 100% ${stripLowerBound}%, 100% ${stripLowerBound}%, 0% ${stripLowerBound}%)`;
-            });
-          }
-
-          const imgScale = getScaleForImage(transitionIndex, currentImageIndex, imageSpecificProgress);
-          images.forEach((img) => {
-            img.style.transform = `scale(${imgScale})`;
-          });
-        }
-
-        lastImageProgress = imageProgress;
-      }
-    }
-  });
+// Sticky behavior utama
+ScrollTrigger.create({
+  trigger: '.sticky-slider',
+  start: 'top top',
+  end: () => `+=${window.innerHeight * 2 * sectionCount}`,
+  pin: true,
+  anticipatePin: 1,
 });
