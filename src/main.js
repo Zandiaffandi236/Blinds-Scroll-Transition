@@ -4,7 +4,7 @@ import ScrollTrigger from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
 
-// Configuration
+// --- Configuration ---
 const CONFIG = {
   lenis: {
     duration: 1.2,
@@ -15,10 +15,14 @@ const CONFIG = {
     stagger: 0.04,
     duration: 0.5,
     ease: 'power2.out'
+  },
+  scale: {
+    initial: 1.3,
+    perSection: 0.1
   }
 };
 
-// Titles for each section
+// --- Titles for each section ---
 const titles = [
   "Desert Oasis Pool",
   "Domed Sanctuary",
@@ -26,17 +30,16 @@ const titles = [
   "Arched Corridor",
 ];
 
-// Initialize Lenis
+// --- Initialize Lenis (smooth scroll) ---
 const lenis = new Lenis(CONFIG.lenis);
 lenis.on('scroll', ScrollTrigger.update);
-
 function raf(time) {
   lenis.raf(time);
   requestAnimationFrame(raf);
 }
 requestAnimationFrame(raf);
 
-// DOM Elements
+// --- DOM Elements ---
 const images = [
   document.querySelector('#img-2'),
   document.querySelector('#img-3'),
@@ -46,7 +49,7 @@ const titleText = document.getElementById('title-text');
 const animatedFlags = Array(images.length).fill(false);
 const sectionCount = images.length;
 
-// Utility Functions
+// --- Utility: Generate mask gradient for blinds effect ---
 function getMaskGradient(progress, stripCount = CONFIG.animation.stripCount) {
   const stops = [];
   const step = 100 / stripCount;
@@ -54,10 +57,7 @@ function getMaskGradient(progress, stripCount = CONFIG.animation.stripCount) {
 
   if (progress === 0) {
     for (let i = 0; i < stripCount; i++) {
-      stops.push(
-        'black 0% 0%',
-        'transparent 0% 0%'
-      );
+      stops.push('black 0% 0%', 'transparent 0% 0%');
     }
     return `linear-gradient(0deg, ${stops.join(', ')})`;
   }
@@ -71,23 +71,17 @@ function getMaskGradient(progress, stripCount = CONFIG.animation.stripCount) {
     const top = base + step * localProgress;
     const secondTop = base + step;
 
-    const roundedBase = Number(base.toFixed(2));
-    const roundedTop = Number(top.toFixed(2));
-    const roundedSecondTop = Number(secondTop.toFixed(2));
-
     stops.push(
-      `black ${roundedBase}% ${roundedTop}%`,
-      `transparent ${roundedTop}% ${roundedSecondTop}%`
+      `black ${base.toFixed(2)}% ${top.toFixed(2)}%`,
+      `transparent ${top.toFixed(2)}% ${secondTop.toFixed(2)}%`
     );
-
   }
-
   return `linear-gradient(0deg, ${stops.join(', ')})`;
 }
 
+// --- Utility: Animate title text with staggered effect ---
 function animateTitleText(newText) {
   titleText.innerHTML = '';
-  
   newText.split('').forEach(char => {
     const span = document.createElement('span');
     span.textContent = char === ' ' ? '\u00A0' : char;
@@ -96,7 +90,6 @@ function animateTitleText(newText) {
     span.style.transform = 'translateY(40px)';
     titleText.appendChild(span);
   });
-
   gsap.to(titleText.children, {
     opacity: 1,
     y: 0,
@@ -106,12 +99,12 @@ function animateTitleText(newText) {
   });
 }
 
-// Initialize images
+// --- Initialize mask gradients ---
 images.forEach(img => {
   img.style.setProperty('--mask-gradient', getMaskGradient(0));
 });
 
-// Main Scroll Animation
+// --- Main Scroll Animation: Blinds, Scale, and Title ---
 gsap.to({}, {
   scrollTrigger: {
     trigger: '.sticky-slider',
@@ -121,41 +114,42 @@ gsap.to({}, {
     onUpdate: self => {
       const totalProgress = self.progress;
       const sectionProgress = 1 / sectionCount;
-
       images.forEach((img, i) => {
+        // Progress untuk gambar ini
         const start = i * sectionProgress;
-        const end = (i + 1) * sectionProgress;
         let progress = (totalProgress - start) / sectionProgress;
         progress = Math.max(0, Math.min(1, progress));
-        const scaleValue = 1.2 - 0.2 * progress;
-
+        // Progress gambar berikutnya (jika ada)
+        let nextProgress = 0;
+        if (i < images.length - 1) {
+          const nextStart = (i + 1) * sectionProgress;
+          let np = (totalProgress - nextStart) / sectionProgress;
+          nextProgress = Math.max(0, Math.min(1, np));
+        }
+        // Scale turun 0.1 saat progress gambar ini, dan 0.1 lagi setelah progress gambar berikutnya selesai
+        const scaleValue = CONFIG.scale.initial - CONFIG.scale.perSection * progress - CONFIG.scale.perSection * nextProgress;
         gsap.to(img, {
           scale: scaleValue,
-          overwrite: "auto",
+          overwrite: 'auto',
           duration: 0.1
         });
-
         img.style.setProperty('--mask-gradient', getMaskGradient(progress));
-
+        // Animasi judul
         if (progress > 0.5 && !animatedFlags[i]) {
           animatedFlags[i] = true;
           animateTitleText(titles[i + 1]);
         }
-
         if (progress <= 0.5 && animatedFlags[i]) {
           animatedFlags[i] = false;
-          if (i > 0) {
-            animateTitleText(titles[i]);
-          } else {
-            animateTitleText(titles[0]);
-          }
+          animateTitleText(i > 0 ? titles[i] : titles[0]);
         }
       });
-    } 
+    }
   }
 });
 
-gsap.set('#img-1 img', { scale: 1.3 });
+// --- Parallax untuk img-1 ---
+gsap.set('#img-1 img', { scale: CONFIG.scale.initial });
 gsap.to('#img-1 img', {
   yPercent: -12,
   ease: 'none',
@@ -168,11 +162,32 @@ gsap.to('#img-1 img', {
   }
 });
 
-// Sticky behavior
+// --- Parallax img-4 setelah sticky selesai ---
+let img4ParallaxTween;
 ScrollTrigger.create({
   trigger: '.sticky-slider',
   start: 'top top',
   end: () => `+=${window.innerHeight * 2 * sectionCount}`,
   pin: true,
   anticipatePin: 1,
+  onLeave: () => {
+    img4ParallaxTween = gsap.to('#img-4 img', {
+      yPercent: 10,
+      ease: 'none',
+      delay: 1,
+      scrollTrigger: {
+        trigger: '#img-4',
+        start: 'center center',
+        end: 'bottom top',
+        scrub: true,
+      }
+    });
+  },
+  onEnterBack: () => {
+    if (img4ParallaxTween) {
+      img4ParallaxTween.scrollTrigger.kill();
+      img4ParallaxTween.kill();
+      img4ParallaxTween = null;
+    }
+  }
 });
