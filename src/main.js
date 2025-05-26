@@ -33,6 +33,7 @@ const titles = [
 // --- Initialize Lenis (smooth scroll) ---
 const lenis = new Lenis(CONFIG.lenis);
 lenis.on('scroll', ScrollTrigger.update);
+
 function raf(time) {
   lenis.raf(time);
   requestAnimationFrame(raf);
@@ -40,6 +41,7 @@ function raf(time) {
 requestAnimationFrame(raf);
 
 // --- DOM Elements ---
+const heroOverlay = document.querySelector('.hero-overlay');
 const images = [
   document.querySelector('#img-2'),
   document.querySelector('#img-3'),
@@ -48,6 +50,84 @@ const images = [
 const titleText = document.getElementById('title-text');
 const animatedFlags = Array(images.length).fill(false);
 const sectionCount = images.length;
+
+const heroVideo = document.querySelector('.hero-video');
+const marqueeText = document.querySelectorAll('.marquee_group');
+const marqueeWrapper = document.querySelector('.marquee_wrapper');
+const bottomTextBorder = document.querySelector('.border');
+
+gsap.set(heroVideo, { scale: 1.5 });
+gsap.set(marqueeWrapper, { yPercent: 80 });
+gsap.set(bottomTextBorder, { width: '0%' });
+gsap.set('#arrow-down', { yPercent: 100 });
+gsap.set('#bottom-center-text', { yPercent: 90 });
+gsap.set('#bottom-right-text', { yPercent: 90 });
+
+let tl = gsap.timeline();
+tl.to(heroVideo, { duration: 0.75, scale: 1, ease: 'power2.out' })
+  .to(marqueeWrapper, { duration: 1, yPercent: 0, ease: 'power2.out' }, 1)
+  .to(bottomTextBorder, { duration: 1, width: '100%', ease: 'power2.out' }, 1.5)
+  .to('#arrow-down', { duration: 1, yPercent: 0, ease: 'power2.out' }, 1.75)
+  .to('#bottom-center-text', { duration: 1, yPercent: 0, ease: 'power2.out' }, 2)
+  .to('#bottom-right-text', { duration: 1, yPercent: 0, ease: 'power2.out' }, 2.25)
+
+let reversedMarqueeTween;
+let marqueeTween =gsap.fromTo(
+  marqueeText,
+  { xPercent: -0 },
+  { 
+    xPercent: -100, 
+    duration: 100, 
+    ease: 'none', 
+    repeat: -1,
+    onReverseComplete: () => {
+      marqueeTween.pause();
+      reversedMarqueeTween = gsap.fromTo(
+        marqueeText,
+        { xPercent: -100 },
+        {
+          xPercent: -0,
+          duration: 100,
+          ease: 'none',
+          repeat: -1,
+          onReverseComplete: () => {
+            reversedMarqueeTween.pause();
+            marqueeTween.play();
+          }
+        }
+      );
+    }
+  }
+);
+
+let lastScroll = 0;
+let direction = 1;
+
+window.addEventListener('scroll', () => {
+  const currentScroll = window.scrollY;
+
+  if (currentScroll > lastScroll && direction !== 1) {
+    direction = 1;
+
+    if (marqueeTween.paused()) {
+      reversedMarqueeTween.reversed(true);
+    }
+
+    marqueeTween.reversed(false);
+  }
+
+  if (currentScroll < lastScroll && direction === 1) {
+    direction = 0;
+
+    if (marqueeTween.paused()) {
+      reversedMarqueeTween.reversed(false);
+    }
+
+    marqueeTween.reversed(true);
+  }
+
+  lastScroll = currentScroll;
+});
 
 // --- Utility: Generate mask gradient for blinds effect ---
 function getMaskGradient(progress, stripCount = CONFIG.animation.stripCount) {
@@ -77,26 +157,6 @@ function getMaskGradient(progress, stripCount = CONFIG.animation.stripCount) {
     );
   }
   return `linear-gradient(0deg, ${stops.join(', ')})`;
-}
-
-// --- Utility: Animate title text with staggered effect ---
-function animateTitleText(newText) {
-  titleText.innerHTML = '';
-  newText.split('').forEach(char => {
-    const span = document.createElement('span');
-    span.textContent = char === ' ' ? '\u00A0' : char;
-    span.style.display = 'inline-block';
-    span.style.opacity = 0;
-    span.style.transform = 'translateY(40px)';
-    titleText.appendChild(span);
-  });
-  gsap.to(titleText.children, {
-    opacity: 1,
-    y: 0,
-    stagger: CONFIG.animation.stagger,
-    duration: CONFIG.animation.duration,
-    ease: CONFIG.animation.ease
-  });
 }
 
 // --- Initialize mask gradients ---
@@ -148,6 +208,32 @@ gsap.to({}, {
   }
 });
 
+gsap.to({}, {
+  scrollTrigger: {
+    trigger: '.hero',
+    start: 'top top',
+    endTrigger: '.intro',
+    end: 'top top',
+    scrub: true,
+    onUpdate: self => {
+      const progress = Math.min(1, self.progress * 1.5);
+      heroOverlay.style.setProperty('--mask-gradient', getMaskGradient(progress));
+
+      gsap.to('.marquee_wrapper', {
+        xPercent: -8 * self.progress,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '.hero',
+          start: 'top bottom',
+          endTrigger: '.intro',
+          end: 'top top',
+          scrub: true,
+        }
+      });
+    }
+  }
+});
+
 // --- Parallax untuk img-1 ---
 gsap.set('#img-1 img', { scale: CONFIG.scale.initial });
 gsap.to('#img-1 img', {
@@ -191,3 +277,23 @@ ScrollTrigger.create({
     }
   }
 });
+
+// --- Utility: Animate title text with staggered effect ---
+function animateTitleText(newText) {
+  titleText.innerHTML = '';
+  newText.split('').forEach(char => {
+    const span = document.createElement('span');
+    span.textContent = char === ' ' ? '\u00A0' : char;
+    span.style.display = 'inline-block';
+    span.style.opacity = 0;
+    span.style.transform = 'translateY(40px)';
+    titleText.appendChild(span);
+  });
+  gsap.to(titleText.children, {
+    opacity: 1,
+    y: 0,
+    stagger: CONFIG.animation.stagger,
+    duration: CONFIG.animation.duration,
+    ease: CONFIG.animation.ease
+  });
+}
